@@ -104,7 +104,8 @@
   (let [starting-puzzle (parse/string->puzzle puzzle-str)]
     (loop [{:keys [puzzle explored-options]} {:puzzle starting-puzzle :explored-options {}}
            history []]
-      (let [possible-solutions (puzzle->possible-vals puzzle explored-options)]
+      (let [possible-solutions (puzzle->possible-vals puzzle explored-options)
+            grouped-possible-solutions (group-by #(count (:possible-values %)) possible-solutions)]
         (cond
           (nil? puzzle)
           (do (when print-progress? (println "\n\n\n puzzle is unsolveable"))
@@ -115,16 +116,16 @@
               {:complete? true :puzzle puzzle})
 
           ;; Some cells have no possible solutions
-          (not-empty (filter #(= 0 (count (:possible-values %))) possible-solutions))
+          (contains? grouped-possible-solutions 0)
           (do
             (when print-progress? (println "puzzle reached an unsolvable solution... backtracking to last valid state."))
             (recur (first history) (vec (rest history))))
 
           ;; some cells have one possible solution
-          (not-empty (filter #(= 1 (count (:possible-values %))) possible-solutions))
+          (contains? grouped-possible-solutions 1)
           (do
             (when print-progress? (println "found cells with one possible solution"))
-            (let [one-pos-solution (filter #(= 1 (count (:possible-values %))) possible-solutions)
+            (let [one-pos-solution (get grouped-possible-solutions 1)
                   updated-puzzle (reduce (fn [updated-puzzle {:keys [row col possible-values]}]
                                            (add-entry updated-puzzle row col (first possible-values)))
                                          puzzle one-pos-solution)]
@@ -135,7 +136,7 @@
           ;; Only cells with multiple options remain
           :else (do
                   (when print-progress? (println "\n\n\n no cells found with one possible solution. Branching path..."))
-                  (let [{:keys [col row possible-values]} (->> possible-solutions (sort-by #(count (:possible-values %))) first)
+                  (let [{:keys [col row possible-values]} (->> (range 2 10) (some #(get grouped-possible-solutions %)) first)
                         chosen-value (first possible-values)
                         updated-puzzle (add-entry puzzle row col chosen-value)
                         updated-explored-options (update explored-options [col row] create-or-update-set chosen-value)]
@@ -148,4 +149,6 @@
   (def results (->> puzzles
                     (take 1000)
                     (map solve-puzzle-string)
-                    (group-by :complete?))))
+                    (group-by :complete?)))
+
+  (time (solve-puzzle-string "050908600800006007006020000009000070203000809010000400000030700900800004005604030" :print-progress? false)))
