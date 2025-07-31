@@ -4,10 +4,10 @@
             [sudoku.puzzle-parsing :as parse])
   (:gen-class))
 
-(defn create-or-update-set [opts value]
-  (if (nil? opts)
-    #{value}
-    (conj opts value)))
+(defn create-or-update-set [val new-value]
+  (if (nil? val)
+    #{new-value}
+    (conj val new-value)))
 
 (def ^:private allowed-values #{1 2 3 4 5 6 7 8 9})
 
@@ -40,6 +40,11 @@
 (defn- puzzle->columns [grid]
   (for [col-idx (range (count grid))]
     (mapv #(nth % col-idx) grid)))
+
+(defn ->cells []
+  (for [col (range 9)
+        row (range 9)]
+    [col row]))
 
 (defn- ->grid-coords
   "Returns the top left coordinate for each grid in a 3x3 sudoku."
@@ -89,13 +94,15 @@
   ([puzzle explored-options]
    (let [row-missing-vals (map ->missing-vals puzzle)
          col-missing-vals (->> puzzle puzzle->columns (map ->missing-vals))]
-     (remove nil?
-             (for [col (range (count puzzle))
-                   row (range (count puzzle))]
-               (when (zero? (get-in puzzle [row col]))
-                 {:col col :row row :possible-values (set/difference
-                                                      (find-possible-values puzzle row col (nth row-missing-vals row) (nth col-missing-vals col))
-                                                      (get explored-options [col row]))})))))
+     (reduce (fn [possible-vals-map [col row]]
+               (if (zero? (get-in puzzle [row col]))
+                 (let [possible-vals (set/difference
+                                      (find-possible-values puzzle row col (nth row-missing-vals row) (nth col-missing-vals col))
+                                      (get explored-options [col row]))
+                       new-entry {:col col :row row :possible-values possible-vals}]
+                   (update possible-vals-map (count possible-vals) conj new-entry))
+                 possible-vals-map))
+             {} (->cells))))
   ([puzzle] (puzzle->possible-vals puzzle {})))
 
 (defn solve-puzzle-string
@@ -104,8 +111,7 @@
   (let [starting-puzzle (parse/string->puzzle puzzle-str)]
     (loop [{:keys [puzzle explored-options]} {:puzzle starting-puzzle :explored-options {}}
            history []]
-      (let [possible-solutions (puzzle->possible-vals puzzle explored-options)
-            grouped-possible-solutions (group-by #(count (:possible-values %)) possible-solutions)]
+      (let [possible-solutions (puzzle->possible-vals puzzle explored-options)]
         (cond
           (nil? puzzle)
           (do (when print-progress? (println "\n\n\n puzzle is unsolveable"))
@@ -116,16 +122,16 @@
               {:complete? true :puzzle puzzle})
 
           ;; Some cells have no possible solutions
-          (contains? grouped-possible-solutions 0)
+          (contains? possible-solutions 0)
           (do
             (when print-progress? (println "puzzle reached an unsolvable solution... backtracking to last valid state."))
             (recur (first history) (vec (rest history))))
 
           ;; some cells have one possible solution
-          (contains? grouped-possible-solutions 1)
+          (contains? possible-solutions 1)
           (do
             (when print-progress? (println "found cells with one possible solution"))
-            (let [one-pos-solution (get grouped-possible-solutions 1)
+            (let [one-pos-solution (get possible-solutions 1)
                   updated-puzzle (reduce (fn [updated-puzzle {:keys [row col possible-values]}]
                                            (add-entry updated-puzzle row col (first possible-values)))
                                          puzzle one-pos-solution)]
@@ -136,7 +142,7 @@
           ;; Only cells with multiple options remain
           :else (do
                   (when print-progress? (println "\n\n\n no cells found with one possible solution. Branching path..."))
-                  (let [{:keys [col row possible-values]} (->> (range 2 10) (some #(get grouped-possible-solutions %)) first)
+                  (let [{:keys [col row possible-values]} (->> (range 2 10) (some #(get possible-solutions %)) first)
                         chosen-value (first possible-values)
                         updated-puzzle (add-entry puzzle row col chosen-value)
                         updated-explored-options (update explored-options [col row] create-or-update-set chosen-value)]
