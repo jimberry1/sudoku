@@ -37,9 +37,9 @@
               (conj acc (get-in puzzle [row col])))
             [] grid-coordinates)))
 
-(defn- puzzle->columns [grid]
-  (for [col-idx (range (count grid))]
-    (mapv #(nth % col-idx) grid)))
+(defn- puzzle->columns [puzzle]
+  (for [col-idx (range (count puzzle))]
+    (mapv #(nth % col-idx) puzzle)))
 
 (defn ->cells []
   (for [col (range 9)
