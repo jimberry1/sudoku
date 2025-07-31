@@ -27,10 +27,12 @@
           c (range box-start-col (+ box-start-col 3))]
       [r c])))
 
+(def memo-coord->grid-coords (memoize coord->grid-coords))
+
 (defn- coord->grid-vals
   "Finds all cell values for cells in the same grid as the provided coordinates."
   [puzzle row-idx col-idx]
-  (let [grid-coordinates (coord->grid-coords row-idx col-idx)]
+  (let [grid-coordinates (memo-coord->grid-coords row-idx col-idx)]
     (reduce (fn [acc [row col]]
               (conj acc (get-in puzzle [row col])))
             [] grid-coordinates)))
