@@ -41,20 +41,27 @@
   (for [col-idx (range (count puzzle))]
     (mapv #(nth % col-idx) puzzle)))
 
-(defn ->cells []
+(def cells
   (for [col (range 9)
         row (range 9)]
     [col row]))
 
-(defn- ->grid-coords
+(def grid-coords
   "Returns the top left coordinate for each grid in a 3x3 sudoku."
-  []
-  (for [col (range 0 9 3)
-        row (range 0 9 3)]
+  (for [row (range 0 9 3)
+        col (range 0 9 3)]
     [col row]))
 
+(defn coord->grid-index
+  "Given the column and row coordinates of a cell, returns the
+   index (0-8) of the grid it is in"
+  [col row]
+  (let [col-idx (quot col 3)
+        row-idx (quot row 3)]
+    (+ (* 3 row-idx) col-idx)))
+
 (defn- puzzle->grids [puzzle]
-  (map (fn [[col row]] (coord->grid-vals puzzle row col)) (->grid-coords)))
+  (map (fn [[col row]] (coord->grid-vals puzzle row col)) grid-coords))
 
 (defn- occurs-at-most-once?
   ([values]
@@ -84,25 +91,28 @@
 
 (defn- find-possible-values
   "Finds all possible entries for a puzzle at the given row and column index."
-  [puzzle row-idx col-idx row-vals col-vals]
-  (let [grid-vals (-> puzzle (coord->grid-vals row-idx col-idx) ->missing-vals)]
-    (set/intersection row-vals col-vals grid-vals)))
+  [row-vals col-vals grid-vals seen-vals]
+  (let [allowed-vals (set/intersection row-vals col-vals grid-vals)]
+    (set/difference allowed-vals seen-vals)))
 
 (defn- puzzle->possible-vals
   "Improve this by finding the missing values once per row, grid and column, then 
    passing those in"
   ([puzzle explored-options]
    (let [row-missing-vals (map ->missing-vals puzzle)
-         col-missing-vals (->> puzzle puzzle->columns (map ->missing-vals))]
+         col-missing-vals (->> puzzle puzzle->columns (map ->missing-vals))
+         grid-missing-vals (->> puzzle puzzle->grids (map ->missing-vals))]
      (reduce (fn [possible-vals-map [col row]]
                (if (zero? (get-in puzzle [row col]))
-                 (let [possible-vals (set/difference
-                                      (find-possible-values puzzle row col (nth row-missing-vals row) (nth col-missing-vals col))
-                                      (get explored-options [col row]))
+                 (let [row-vals (nth row-missing-vals row)
+                       col-vals (nth col-missing-vals col)
+                       grid-vals (nth grid-missing-vals (coord->grid-index col row))
+                       seen-vals (get explored-options [col row])
+                       possible-vals (find-possible-values row-vals col-vals grid-vals seen-vals)
                        new-entry {:col col :row row :possible-values possible-vals}]
                    (update possible-vals-map (count possible-vals) conj new-entry))
                  possible-vals-map))
-             {} (->cells))))
+             {} cells)))
   ([puzzle] (puzzle->possible-vals puzzle {})))
 
 (defn solve-puzzle-string
